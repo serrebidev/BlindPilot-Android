@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">BlindPilot</string>
+    <string name="action_service_name">BlindPilot device assistance</string>
+    <string name="action_service_description">Allows BlindPilot to read accessible screen content and perform actions you request. Works alongside TalkBack and Backtalk. Enable only when you want device assistance.</string>
+</resources>

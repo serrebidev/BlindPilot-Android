@@ -2,7 +2,7 @@
 
 Date: 2026-10-19
 
-Status: Design ready for review. Product implementation has not started.
+Status: Approved 2026-10-19. Pre-release 0.1.0 implements everything here except Samsung SDK integration (waiting on partner approval) and the full screen-reader acceptance pass.
 
 ## Purpose and approved scope
 
