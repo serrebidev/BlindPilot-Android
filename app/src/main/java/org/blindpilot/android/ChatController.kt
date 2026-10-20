@@ -55,10 +55,11 @@ class ChatController private constructor(private val context:Context) {
         "samsung" -> throw IllegalStateException("Samsung SDK access is pending. This backend will be available after the authorized SDK is integrated.")
         else -> cloud
     }
-    fun send(conversationId:String,request:ChatRequest,deviceActions:Boolean) {
+    /** [saveUser] is false when answering a user message already stored, as in regenerate or resend. */
+    fun send(conversationId:String,request:ChatRequest,deviceActions:Boolean,saveUser:Boolean=true) {
         check(!busy) { "A task is already running" }
         val cancel=Cancellation(); cancellation=cancel;busy=true;activeConversation=conversationId;status="Working";changed()
-        store.addMessage(conversationId,request.messages.last())
+        if(saveUser) store.addMessage(conversationId,request.messages.last())
         val responseId=store.addMessage(conversationId,ChatMessage("assistant",""),"streaming")
         executor.execute {
             val text=StringBuilder();var savedAt=0L

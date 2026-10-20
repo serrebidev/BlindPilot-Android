@@ -49,6 +49,19 @@ class StoreTest {
         assertTrue(store.messages(first).isEmpty())
         store.close()
     }
+    @Test fun regenerateTrimsOnlyLaterMessagesInThatConversation() {
+        val store = store()
+        val chat = store.newConversation("Chat", "a", "p")
+        val other = store.newConversation("Other", "a", "p")
+        val question = store.addMessage(chat, ChatMessage("user", "q1"))
+        store.addMessage(chat, ChatMessage("assistant", "a1"))
+        store.addMessage(chat, ChatMessage("user", "q2"))
+        store.addMessage(other, ChatMessage("user", "keep"))
+        store.deleteMessagesAfter(chat, question)
+        assertEquals(listOf(question), store.rows(chat).map { it.id })
+        assertEquals(listOf("keep"), store.messages(other).map { it.content })
+        store.close()
+    }
 }
 
 private class MemorySecrets : Secrets {

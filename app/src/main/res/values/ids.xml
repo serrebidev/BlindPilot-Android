@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Accessibility custom action ids for list items. -->
+<resources>
+    <item name="item_action_0" type="id" />
+    <item name="item_action_1" type="id" />
+    <item name="item_action_2" type="id" />
+    <item name="item_action_3" type="id" />
+    <item name="item_action_4" type="id" />
+    <item name="item_action_5" type="id" />
+    <item name="item_action_6" type="id" />
+    <item name="item_action_7" type="id" />
+    <item name="item_action_8" type="id" />
+    <item name="item_action_9" type="id" />
+    <item name="item_action_10" type="id" />
+    <item name="item_action_11" type="id" />
+    <item name="item_action_12" type="id" />
+    <item name="item_action_13" type="id" />
+    <item name="item_action_14" type="id" />
+    <item name="item_action_15" type="id" />
+</resources>

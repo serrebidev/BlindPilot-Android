@@ -19,12 +19,15 @@ import android.text.util.Linkify
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.*
 import org.blindpilot.android.actions.DeviceAccessibilityService
 import org.blindpilot.android.backends.CloudBackend
 import org.blindpilot.android.backends.HermesBackend
 import org.blindpilot.android.backends.ProviderCatalog
 import org.blindpilot.android.core.*
+import org.blindpilot.android.data.Conversation
+import org.blindpilot.android.data.MessageRow
 import org.blindpilot.android.local.ModelCatalog
 import org.blindpilot.android.local.ModelManager
 import java.io.File
@@ -45,7 +48,7 @@ class MainActivity : Activity() {
     private lateinit var attachmentsView: TextView
     private lateinit var composer: EditText
     private lateinit var deviceActions: CheckBox
-    private var rows = listOf<Pair<ChatMessage, String>>()
+    private var rows = listOf<MessageRow>()
     private var accounts = listOf<Account>()
     private var seenRevision = -1
     private val listener: () -> Unit = { refresh() }
@@ -83,13 +86,14 @@ class MainActivity : Activity() {
         profileButton = button("Profile") { chooseProfile() }
         modelButton = button("Model") { chooseModel() }
         root.addView(row(accountButton, profileButton, modelButton))
-        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf())
+        adapter = actionAdapter(mutableListOf(), ::messageActions)
         val empty = TextView(this).apply { text = "No messages yet. Write a message below."; setPadding(0, pad, 0, pad) }
         val list = ListView(this).apply {
             contentDescription = "Messages"
             adapter = this@MainActivity.adapter
             emptyView = empty
             setOnItemClickListener { _, _, position, _ -> openMessage(position) }
+            setOnItemLongClickListener { _, _, position, _ -> actionMenu(messageActions(position)); true }
         }
         root.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(empty)
@@ -167,8 +171,9 @@ class MainActivity : Activity() {
         "hermes" -> "Remote Hermes"; "local" -> "On-device model"; "samsung" -> "Samsung Galaxy AI"
         else -> ProviderCatalog.find(id)?.label ?: id
     }
-    private fun summary(row: Pair<ChatMessage, String>): String {
-        val (message, state) = row
+    private fun summary(row: MessageRow): String {
+        val message = row.message
+        val state = row.state
         val who = when (message.role) { "user" -> "You"; "assistant" -> "Assistant"; else -> message.role }
         val note = when (state) { "streaming" -> " (writing)"; "interrupted" -> " (interrupted)"; "error" -> " (error)"; else -> "" }
         val files = if (message.attachments.isEmpty()) "" else " Attachments: " + message.attachments.joinToString { it.name } + "."
@@ -197,7 +202,7 @@ class MainActivity : Activity() {
         if (account.model.isBlank() && account.provider != "hermes") return say("Choose a model first with the Model button.")
         val profile = currentProfile()
         if (conversationId.isEmpty()) conversationId = store.newConversation(text.lineSequence().first().take(60).ifBlank { "Attachment" }, account.id, profile.id)
-        val history = store.rows(conversationId).filter { it.second == "complete" }.map { it.first }
+        val history = store.rows(conversationId).filter { it.state == "complete" }.map { it.message }
         val request = ChatRequest(account, profile, history + ChatMessage("user", text, pending.toList()))
         try { controller.send(conversationId, request, deviceActions.isChecked) } catch (e: Exception) { return say(ChatController.safeError(e)) }
         pending.clear()
@@ -220,13 +225,13 @@ class MainActivity : Activity() {
     }
 
     private fun openMessage(position: Int) {
-        val message = rows.getOrNull(position)?.first ?: return
+        val message = rows.getOrNull(position)?.message ?: return
         val body = TextView(this).apply {
             text = message.content; setTextIsSelectable(true); textSize = 18f; setPadding(dp(16), dp(8), dp(16), dp(8))
             Linkify.addLinks(this, Linkify.WEB_URLS)
         }
-        val links = Regex("https?://[^\\s)>\\]\"']+").findAll(message.content).map { it.value }.distinct().toList()
-        val code = Regex("```[^\\n]*\\n([\\s\\S]*?)```").findAll(message.content).map { it.groupValues[1] }.toList()
+        val links = linksIn(message.content)
+        val code = codeIn(message.content)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         if (links.isNotEmpty()) box.addView(button("Links (${links.size})") { pick("Links", links) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(links[it]))) } })
         if (code.isNotEmpty()) box.addView(button("Code blocks (${code.size})") { pick("Code blocks", code.mapIndexed { i, c -> "Block ${i + 1}: " + c.lineSequence().first().take(80) }) { copy(code[it], "Code block") } })
@@ -235,13 +240,110 @@ class MainActivity : Activity() {
             .setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton("Close", null)
             .setNeutralButton("Copy") { _, _ -> copy(message.content, "Message") }
-            .setNegativeButton("Share") { _, _ -> startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message.content), "Share message")) }
+            .setNegativeButton("Share") { _, _ -> share(message.content) }
             .show()
     }
 
     private fun copy(text: String, label: String) {
         getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(label, text))
         say("$label copied")
+    }
+
+    // Item actions: TalkBack lists these in its actions menu; long press shows the same list.
+
+    private fun actionAdapter(items: MutableList<String>, actions: (Int) -> List<Pair<String, () -> Unit>>) =
+        object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View = super.getView(position, convertView, parent).apply {
+                accessibilityDelegate = object : View.AccessibilityDelegate() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        actions(position).take(ACTION_IDS.size).forEachIndexed { i, (label, _) -> info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_IDS[i], label)) }
+                    }
+                    override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                        val chosen = actions(position).getOrNull(ACTION_IDS.indexOf(action)) ?: return super.performAccessibilityAction(host, action, args)
+                        chosen.second()
+                        return true
+                    }
+                }
+            }
+        }
+
+    private fun actionMenu(actions: List<Pair<String, () -> Unit>>) {
+        if (actions.isNotEmpty()) pick("Actions", actions.map { it.first }) { actions[it].second() }
+    }
+
+    private fun messageActions(position: Int): List<Pair<String, () -> Unit>> {
+        val row = rows.getOrNull(position) ?: return emptyList()
+        val text = row.message.content
+        val actions = mutableListOf<Pair<String, () -> Unit>>("Read all" to { openMessage(position) }, "Copy" to { copy(text, "Message") })
+        if (row.state == "streaming") return actions
+        if (row.message.role == "assistant") {
+            actions += "Regenerate" to { regenerate(row) }
+            actions += "Edit" to { editMessage(row, resend = false) }
+        } else {
+            actions += "Edit and resend" to { editMessage(row, resend = true) }
+            actions += "Edit" to { editMessage(row, resend = false) }
+            actions += "Resend" to { answer(row) }
+            actions += "Save as prompt" to { textPrompt("Prompt title", text.lineSequence().first().take(60)) { store.savePrompt(it, text); say("Prompt saved") } }
+        }
+        actions += "New chat from here" to { branch(row) }
+        actions += "Share" to { share(text) }
+        val links = linksIn(text)
+        if (links.isNotEmpty()) actions += "Links" to { pick("Links", links) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(links[it]))) } }
+        val code = codeIn(text)
+        if (code.isNotEmpty()) actions += "Copy code block" to { pick("Code blocks", code.mapIndexed { i, c -> "Block ${i + 1}: " + c.lineSequence().first().take(80) }) { copy(code[it], "Code block") } }
+        actions += "Delete" to { confirm("Delete this message?") { store.deleteMessage(row.id); refresh(); say("Message deleted") } }
+        return actions
+    }
+
+    private fun share(text: String) = startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share message"))
+    private fun codeIn(text: String) = Regex("```[^\\n]*\\n([\\s\\S]*?)```").findAll(text).map { it.groupValues[1] }.toList()
+
+    /** Copies history up to and including [row] into a new conversation, leaving the original untouched. */
+    private fun branch(row: MessageRow) {
+        val source = conversation() ?: return
+        val id = store.newConversation("${source.title} (branch)", source.accountId, source.profileId)
+        rows.filter { it.id <= row.id }.forEach { store.addMessage(id, it.message, it.state) }
+        openConversation(id)
+    }
+
+    private fun linksIn(text: String) = Regex("https?://[^\\s)>\\]\"']+").findAll(text).map { it.value }.distinct().toList()
+
+    /** Answers [user] again. Later messages are removed only after confirmation. */
+    private fun answer(user: MessageRow) {
+        if (controller.busy) return say("A task is already running. Choose Stop first.")
+        val later = rows.count { it.id > user.id }
+        val run = {
+            store.deleteMessagesAfter(conversationId, user.id)
+            reloadAccounts()
+            val account = currentAccount()
+            if (account == null) say("Add an account first: open Menu, then Accounts.")
+            else {
+                val history = store.rows(conversationId).filter { it.state == "complete" || it.id == user.id }.map { it.message }
+                try { controller.send(conversationId, ChatRequest(account, currentProfile(), history), deviceActions = false, saveUser = false) }
+                catch (e: Exception) { say(ChatController.safeError(e)) }
+                refresh()
+            }
+        }
+        if (later == 0) run() else confirm("This removes the $later later ${if (later == 1) "message" else "messages"} in this conversation and sends again. Continue?") { run() }
+    }
+
+    private fun regenerate(response: MessageRow) {
+        val user = rows.lastOrNull { it.id < response.id && it.message.role == "user" } ?: return say("There is no message of yours before this response.")
+        answer(user)
+    }
+
+    private fun editMessage(row: MessageRow, resend: Boolean) {
+        if (controller.busy) return say("A task is already running. Choose Stop first.")
+        val field = input(row.message.content, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES).apply { minLines = 3 }
+        form(if (resend) "Edit and resend" else "Edit message", listOf(labeled("Message text", field))) {
+            val text = field.text.toString().trim()
+            if (text.isEmpty() && row.message.attachments.isEmpty()) return@form "The message cannot be empty."
+            store.updateMessage(row.id, text, "complete")
+            refresh()
+            if (resend) answer(rows.first { it.id == row.id }) else say("Message edited")
+            null
+        }
     }
 
     // Lists and dialogs
@@ -251,9 +353,13 @@ class MainActivity : Activity() {
     }
 
     /** A filterable list for long collections such as models and conversations. */
-    private fun searchList(title: String, items: List<String>, extra: Pair<String, () -> Unit>? = null, neutral: Pair<String, () -> Unit>? = null, onPick: (Int) -> Unit) {
+    private fun searchList(title: String, items: List<String>, extra: Pair<String, () -> Unit>? = null, neutral: Pair<String, () -> Unit>? = null,
+                           actions: ((Int) -> List<Pair<String, () -> Unit>>)? = null, onPick: (Int) -> Unit) {
         val shown = items.indices.toMutableList()
-        val listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, items.toMutableList())
+        var dialog: AlertDialog? = null
+        // Item actions close the list first; most open their own dialog or change the list.
+        val itemActions = { position: Int -> actions?.invoke(shown[position]).orEmpty().map { (label, run) -> label to { dialog?.dismiss(); run() } } }
+        val listAdapter = actionAdapter(items.toMutableList(), itemActions)
         val filter = input("")
         val list = ListView(this).apply { adapter = listAdapter; contentDescription = title }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), 0, dp(16), 0) }
@@ -262,8 +368,9 @@ class MainActivity : Activity() {
         val builder = AlertDialog.Builder(this).setTitle("$title (${items.size})").setView(box).setNegativeButton("Close", null)
         extra?.let { (label, action) -> builder.setPositiveButton(label) { _, _ -> action() } }
         neutral?.let { (label, action) -> builder.setNeutralButton(label) { _, _ -> action() } }
-        val dialog = builder.show()
-        list.setOnItemClickListener { _, _, position, _ -> dialog.dismiss(); onPick(shown[position]) }
+        dialog = builder.show()
+        list.setOnItemClickListener { _, _, position, _ -> dialog?.dismiss(); onPick(shown[position]) }
+        if (actions != null) list.setOnItemLongClickListener { _, _, position, _ -> actionMenu(itemActions(position)); true }
         filter.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -301,17 +408,13 @@ class MainActivity : Activity() {
     private fun showConversations() {
         val all = store.conversations()
         if (all.isEmpty()) return say("No saved conversations yet.")
-        searchList("Conversations", all.map { it.title }, "New chat" to ::newChat) { index ->
-            val chosen = all[index]
-            pick(chosen.title, listOf("Open", "Rename", "Export", "Delete")) { action ->
-                when (action) {
-                    0 -> openConversation(chosen.id)
-                    1 -> textPrompt("Conversation title", chosen.title) { store.rename(chosen.id, it) }
-                    2 -> export(chosen.id)
-                    3 -> confirm("Delete ${chosen.title}? This cannot be undone.") { store.deleteConversation(chosen.id); refresh(); say("Conversation deleted") }
-                }
-            }
-        }
+        fun actions(chosen: Conversation) = listOf<Pair<String, () -> Unit>>(
+            "Open" to { openConversation(chosen.id) },
+            "Rename" to { textPrompt("Conversation title", chosen.title) { store.rename(chosen.id, it) } },
+            "Export" to { export(chosen.id) },
+            "Delete" to { confirm("Delete ${chosen.title}? This cannot be undone.") { store.deleteConversation(chosen.id); refresh(); say("Conversation deleted") } },
+        )
+        searchList("Conversations", all.map { it.title }, "New chat" to ::newChat, actions = { actions(all[it]) }) { openConversation(all[it].id) }
     }
 
     private fun openConversation(id: String) {
@@ -746,6 +849,9 @@ class MainActivity : Activity() {
         private const val REQUEST_EXPORT = 3
         /** Survives rotation; attachments wait here until sent. */
         private val pending = mutableListOf<Attachment>()
+        private val ACTION_IDS = listOf(R.id.item_action_0, R.id.item_action_1, R.id.item_action_2, R.id.item_action_3, R.id.item_action_4,
+            R.id.item_action_5, R.id.item_action_6, R.id.item_action_7, R.id.item_action_8, R.id.item_action_9, R.id.item_action_10,
+            R.id.item_action_11, R.id.item_action_12, R.id.item_action_13, R.id.item_action_14, R.id.item_action_15)
         private val MODEL_SORTS = listOf("A to Z", "Z to A", "Newest first", "Oldest first")
         const val SAMSUNG_PENDING = "Samsung Galaxy AI needs Samsung's partner SDK. Your registration is pending approval. This account type becomes available in an update after Samsung grants access."
         private val HELP = """
@@ -754,6 +860,10 @@ class MainActivity : Activity() {
             Getting started: open Menu, then Accounts, and add an account. Choose a model with the Model button. Write in the Message field and choose Send.
 
             Reading answers: the Messages list shows a short preview of each message. Activate a message to read all of it, select text, copy, share, or open its links and code blocks.
+
+            Message and conversation actions: with TalkBack or Backtalk, swipe up or down on a message or conversation to choose an action, then double tap. Messages offer read all, copy, edit, edit and resend, resend, regenerate, share, links, and delete. Conversations offer open, rename, export, and delete. Long press shows the same actions as a menu.
+
+            Message and conversation actions: with TalkBack or Backtalk, swipe up or down on a message or conversation to choose an action, then double tap. Your messages offer read all, copy, edit, edit and resend, resend, save as prompt, new chat from here, share, links, code blocks, and delete. Responses offer regenerate and edit in place of resend. Conversations offer open, rename, export, and delete. Long press shows the same actions as a menu.
 
             Stop ends the current task. While a task runs, a notification also offers Stop.
 

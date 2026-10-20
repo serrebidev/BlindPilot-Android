@@ -48,6 +48,7 @@ class KeystoreSecrets(context: Context) : Secrets {
     @Synchronized override fun remove(id:String) { check(preferences.edit().remove(id).commit()) }
 }
 
+data class MessageRow(val id:Long,val message:ChatMessage,val state:String)
 data class Conversation(val id:String,val title:String,val accountId:String,val profileId:String,val updated:Long,val draft:String)
 
 class Store(context:Context, private val secrets:Secrets = KeystoreSecrets(context)) : SQLiteOpenHelper(context,"blindpilot.db",null,1) {
@@ -102,7 +103,10 @@ class Store(context:Context, private val secrets:Secrets = KeystoreSecrets(conte
     fun updateMessage(id:Long,content:String,state:String) { writableDatabase.update("messages",ContentValues().apply { put("content",content);put("state",state) },"id=?",arrayOf(id.toString())) }
     fun messageState(id:Long):String = readableDatabase.rawQuery("SELECT state FROM messages WHERE id=?",arrayOf(id.toString())).use { if(it.moveToFirst()) it.getString(0) else "" }
     fun messages(conversationId:String):List<ChatMessage> = readableDatabase.rawQuery("SELECT role,content,attachments FROM messages WHERE conversation_id=? ORDER BY id",arrayOf(conversationId)).use { c -> buildList { while(c.moveToNext()) add(ChatMessage(c.getString(0),c.getString(1),parseAttachments(c.getString(2)))) } }
-    fun rows(conversationId:String):List<Pair<ChatMessage,String>> = readableDatabase.rawQuery("SELECT role,content,attachments,state FROM messages WHERE conversation_id=? ORDER BY id",arrayOf(conversationId)).use { c -> buildList { while(c.moveToNext()) add(ChatMessage(c.getString(0),c.getString(1),parseAttachments(c.getString(2))) to c.getString(3)) } }
+    fun rows(conversationId:String):List<MessageRow> = readableDatabase.rawQuery("SELECT id,role,content,attachments,state FROM messages WHERE conversation_id=? ORDER BY id",arrayOf(conversationId)).use { c -> buildList { while(c.moveToNext()) add(MessageRow(c.getLong(0),ChatMessage(c.getString(1),c.getString(2),parseAttachments(c.getString(3))),c.getString(4))) } }
+    // ponytail: attachment files of removed messages stay on disk; sweep unreferenced files if storage matters.
+    fun deleteMessage(id:Long) { writableDatabase.delete("messages","id=?",arrayOf(id.toString())) }
+    fun deleteMessagesAfter(conversationId:String,id:Long) { writableDatabase.delete("messages","conversation_id=? AND id>?",arrayOf(conversationId,id.toString())) }
     fun deleteConversation(id:String) {
         val db=writableDatabase; db.beginTransaction()
         try { db.delete("messages","conversation_id=?",arrayOf(id)); db.delete("conversations","id=?",arrayOf(id)); db.setTransactionSuccessful() } finally { db.endTransaction() }

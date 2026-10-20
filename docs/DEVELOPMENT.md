@@ -20,6 +20,7 @@ Release builds are signed with the standard Android debug key, so updates instal
 `app/src/androidTest` holds real-hardware checks. Each one skips itself unless its input is supplied.
 
 - `LocalInferenceTest` downloads a model, runs offline inference, and checks Stop. Pass `-e modelUrl`, `-e modelSha`, and `-e modelName`.
+- `MessageActionsTest` checks the screen reader actions on real message rows. `RegenerateLiveTest` sends one real request with the default account when run with `-e live true`.
 - `ProvisionAccounts` and `ProvisionProfiles` import developer data from `bp-accounts.json` and `bp-profiles.json` in the app's files directory. Write the file with `adb shell run-as`, so keys never appear on a command line. Each file is deleted after import.
 
 ## Rules
