@@ -5,3 +5,12 @@ BlindPilot for Android is the native Kotlin port of [BlindPilot](https://github.
 The cloud providers it talks to (OpenRouter, OpenAI, Claude, Gemini, and the rest), and llama.cpp for on-device models, belong to their own projects. This app is a client and a shell around them.
 
 Questions and bug reports are welcome in the [SerrebiProjects Telegram group](https://t.me/SerrebiProjects). More serrebi projects: [projects.serrebiradio.com](https://projects.serrebiradio.com).
+
+
+## About this project
+
+- GitHub profile: [serrebidev](https://github.com/serrebidev)
+- Repository (GitHub): [https://github.com/serrebidev/BlindPilot-Android](https://github.com/serrebidev/BlindPilot-Android)
+- Repository (Forgejo): [https://git.serrebiradio.com/serrebi/BlindPilot-Android](https://git.serrebiradio.com/serrebi/BlindPilot-Android)
+- Projects site: [projects.serrebiradio.com](https://projects.serrebiradio.com)
+- Questions and bug reports: [SerrebiProjects Telegram group](https://t.me/SerrebiProjects)
