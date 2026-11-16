@@ -2,6 +2,12 @@
 
 Accessible AI chat for blind Android users, built for TalkBack and Backtalk. A native Kotlin port of [BlindPilot](https://github.com/serrebidev/BlindPilot).
 
+[![Join SerrebiProjects on Telegram](https://img.shields.io/badge/Telegram-SerrebiProjects-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/SerrebiProjects)
+
+**Questions, bugs, or release news?** Join the [SerrebiProjects Telegram group](https://t.me/SerrebiProjects), the fastest place to get help.
+
+More serrebi projects: [projects.serrebiradio.com](https://projects.serrebiradio.com)
+
 ## Features
 
 - Cloud chat: OpenRouter, OpenAI, ChatGPT plan sign-in, Claude, Gemini, Z.AI, Moonshot AI, Kimi, DeepSeek, Demon Route, Command Code, OpenCode Go, and any OpenAI-compatible service. Streaming, cancellation, attachments (images, PDF, UTF-8 text), OpenRouter server tools, and reasoning effort.
@@ -25,3 +31,7 @@ Download the APK from the latest release and open it on the device. Android 9 or
 ## Build
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Credits
+
+See [CREDITS.md](CREDITS.md) for where the ideas behind this project came from, and the third-party projects it builds on.
