@@ -443,7 +443,7 @@ class MainActivity : Activity() {
             "Rename conversation" to { conversation()?.let { c -> textPrompt("Conversation title", c.title) { store.rename(c.id, it) } } ?: say("Open a conversation first.") },
             "Export conversation" to { if (conversationId.isEmpty()) say("Open a conversation first.") else export(conversationId) },
             "Delete conversation" to { conversation()?.let { c -> confirm("Delete ${c.title}? This cannot be undone.") { store.deleteConversation(c.id); newChat() } } ?: say("Open a conversation first.") },
-            "Device assistance" to ::showDeviceAssistance, "Help" to ::showHelp,
+            "Device assistance" to ::showDeviceAssistance, "Help" to ::showHelp, "About" to ::showAbout,
         )
         pick("Menu", entries.map { it.first }) { entries[it].second() }
     }
@@ -802,6 +802,22 @@ class MainActivity : Activity() {
 
     private fun showHelp() {
         AlertDialog.Builder(this).setTitle("BlindPilot help").setMessage(HELP).setPositiveButton("Close", null).show()
+    }
+
+    private fun showAbout() {
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "unknown"
+        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val description = TextView(this).apply { text = "BlindPilot for Android $version\n\nAn accessible AI chat client.\nMIT license.\n\nAuthor: serrebidev." }
+        column.addView(description)
+        for ((label, url) in listOf(
+            "GitHub: serrebidev/BlindPilot-Android" to "https://github.com/serrebidev/BlindPilot-Android",
+            "Forgejo: serrebi/BlindPilot-Android" to "https://git.serrebiradio.com/serrebi/BlindPilot-Android",
+            "Projects: projects.serrebiradio.com" to "https://projects.serrebiradio.com",
+            "Telegram: SerrebiProjects" to "https://t.me/SerrebiProjects",
+            "Full credits (CREDITS.md)" to "https://git.serrebiradio.com/serrebi/BlindPilot-Android/src/branch/main/CREDITS.md",
+        )) column.addView(button(label) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) })
+        val scroll = ScrollView(this).apply { addView(column) }
+        AlertDialog.Builder(this).setTitle("About BlindPilot").setView(scroll).setPositiveButton("Close", null).show()
     }
 
     // Documents
