@@ -443,7 +443,8 @@ class MainActivity : Activity() {
             "Rename conversation" to { conversation()?.let { c -> textPrompt("Conversation title", c.title) { store.rename(c.id, it) } } ?: say("Open a conversation first.") },
             "Export conversation" to { if (conversationId.isEmpty()) say("Open a conversation first.") else export(conversationId) },
             "Delete conversation" to { conversation()?.let { c -> confirm("Delete ${c.title}? This cannot be undone.") { store.deleteConversation(c.id); newChat() } } ?: say("Open a conversation first.") },
-            "Device assistance" to ::showDeviceAssistance, "Help" to ::showHelp, "About" to ::showAbout,
+            "Device assistance" to ::showDeviceAssistance, "Help" to ::showHelp,
+            "Report an issue on GitHub" to ::showReportIssue, "About" to ::showAbout,
         )
         pick("Menu", entries.map { it.first }) { entries[it].second() }
     }
@@ -804,6 +805,27 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("BlindPilot help").setMessage(HELP).setPositiveButton("Close", null).show()
     }
 
+    /** Title and description typed here, then GitHub's new-issue page opens with both filled in. */
+    private fun showReportIssue() {
+        val summary = input("").apply { isSingleLine = true }
+        val details = input("", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE).apply { minLines = 4 }
+        val error = TextView(this).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8))
+            addView(error); addView(labeled("Title", summary)); addView(labeled("Description", details))
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("Report an issue on GitHub").setView(ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Open GitHub", null).setNegativeButton("Cancel", null).show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if (summary.text.isBlank()) { error.text = "Enter a title."; return@setOnClickListener }
+            val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "unknown"
+            val device = "Android ${Build.VERSION.RELEASE} ${Build.MANUFACTURER} ${Build.MODEL}"
+            val url = ReportIssue.url(summary.text.toString(), details.text.toString(), "BlindPilot $version on $device")
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            dialog.dismiss()
+        }
+    }
+
     private fun showAbout() {
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "unknown"
         val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -886,6 +908,8 @@ class MainActivity : Activity() {
             On-device models: open Menu, then On-device models, to import a GGUF file or download one with its SHA-256 checksum. These models work offline.
 
             Device assistance: turn on BlindPilot device assistance in Android Accessibility settings, then check Let the model operate this device before sending. You approve every action. Your screen reader stays on.
+
+            Reporting a problem: open Menu, then Report an issue on GitHub, and type a title and a description. Open GitHub shows GitHub's new issue page with both filled in and your BlindPilot version and device added. Sign in on GitHub and press Create.
 
             Keyboard: Control+Enter sends. Control+N starts a new chat. Control+L lists conversations. Control+M opens the menu. Escape stops a running task.
         """.trimIndent()
