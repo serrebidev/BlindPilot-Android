@@ -18,6 +18,8 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
     // English-only first release; ChromeOS is not a target.
     lint { disable += setOf("SetTextI18n", "ChromeOsAbiSupport") }
+    // GitHub runners: the owner key sits outside ~/.android, so the release workflow names it.
+    signingConfigs { getByName("debug") { System.getenv("ANDROID_RELEASE_KEYSTORE")?.let { storeFile = file(it) } } }
     // Release shares the debug key so updates install over existing builds, keeping saved accounts.
     buildTypes { release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("debug") } }
 }
